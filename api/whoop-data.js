@@ -1,7 +1,7 @@
 // ============================================================
 // GET /api/whoop-data?path=/recovery&limit=1
 // Authorization: Bearer <user's WHOOP access_token>
-// Proxies the request to https://api.prod.whoop.com/developer/v1<path>
+// Proxies the request to https://api.prod.whoop.com/developer/v2<path>
 // and returns the JSON. Needed because WHOOP's API doesn't send
 // CORS headers, so the browser can't call it directly.
 // ============================================================
@@ -24,11 +24,9 @@ export default async function handler(req, res) {
     if (k !== 'path') fwd.set(k, String(v));
   }
   const qs = fwd.toString();
-  // WHOOP moved most endpoints to v2; cycle is still on v1.
-  const base = path.startsWith('/cycle')
-    ? 'https://api.prod.whoop.com/developer/v1'
-    : 'https://api.prod.whoop.com/developer/v2';
-  const url = base + path + (qs ? '?' + qs : '');
+  // WHOOP retired the v1 API — every endpoint (cycle included) is on v2.
+  if (path.includes('..') || path.includes('//')) return res.status(400).json({ error: 'bad path' });
+  const url = 'https://api.prod.whoop.com/developer/v2' + path + (qs ? '?' + qs : '');
 
   try {
     const r = await fetch(url, {
