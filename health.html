@@ -672,6 +672,7 @@ main {
       </div>
     </div>
   </div>
+  <script src="whoop.js"></script>
   <script>
   (function () {
     const KEY = 'whoop_tokens_v1';
@@ -679,9 +680,7 @@ main {
     const REDIRECT  = window.location.origin + '/api/whoop-callback';
     const SCOPES    = 'read:recovery read:sleep read:workout read:cycles read:profile read:body_measurement offline';
 
-    function load() { try { return JSON.parse(localStorage.getItem(KEY)); } catch { return null; } }
-    function save(t) { try { localStorage.setItem(KEY, JSON.stringify(t)); } catch {} }
-    function wipe() { try { localStorage.removeItem(KEY); } catch {} }
+    const { load, save, wipe } = window.Whoop;
 
     if (location.hash && location.hash.indexOf('whoop_access') !== -1) {
       const h = new URLSearchParams(location.hash.slice(1));
@@ -700,7 +699,7 @@ main {
         + '&redirect_uri='  + encodeURIComponent(REDIRECT)
         + '&response_type=code'
         + '&scope='         + encodeURIComponent(SCOPES)
-        + '&state='         + Math.random().toString(36).slice(2);
+        + '&state='         + window.Whoop.randomState();
       location.href = url;
     });
     $('whDisconnectBtn').addEventListener('click', () => { wipe(); render(); });
@@ -709,26 +708,8 @@ main {
       try { await loadData(); } finally { setTimeout(() => btn.classList.remove('spin'), 600); }
     });
 
-    async function refreshTok(t) {
-      if (!t.refresh) return null;
-      try {
-        const r = await fetch('/api/whoop-refresh', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ refresh_token: t.refresh }) });
-        const j = await r.json();
-        if (j.access_token) {
-          const next = { access: j.access_token, refresh: j.refresh_token || t.refresh, expires: Date.now() + (j.expires_in||3500)*1000 };
-          save(next); return next;
-        }
-      } catch {}
-      return null;
-    }
-    async function whFetch(path, t) {
-      const [p, qs] = path.split('?');
-      const params = new URLSearchParams(qs || ''); params.set('path', p);
-      const r = await fetch('/api/whoop-data?' + params.toString(), { headers: { 'Authorization': 'Bearer ' + t.access, 'Accept':'application/json' } });
-      if (r.status === 401) { const n = await refreshTok(t); if (n) return whFetch(path, n); throw new Error('unauthorized — reconnect'); }
-      if (!r.ok) throw new Error('WHOOP ' + r.status + ': ' + (await r.text()));
-      return await r.json();
-    }
+    // Token refresh + API calls go through the shared single-flight client (whoop.js).
+    const whFetch = (path) => window.Whoop.api(path);
 
     function fmtMins(ms) { const m = Math.round(ms/60000); const h = Math.floor(m/60); return h + 'h ' + String(m%60).padStart(2,'0') + 'm'; }
     function fmtMinsShort(ms) { const m = Math.round(ms/60000); const h = Math.floor(m/60); return (h>0?h+'h ':'') + (m%60)+'m'; }
@@ -763,8 +744,8 @@ main {
     }
 
     async function loadData() {
-      let t = load(); if (!t) return;
-      if (t.expires && Date.now() > t.expires - 60000) { const n = await refreshTok(t); if (n) t = n; }
+      const t = await window.Whoop.getTokens();
+      if (!t) { if (!load()) { render(); showErr('WHOOP session expired — tap Connect WHOOP again.'); } return; }
       showErr('');
       try {
         const [rec, sleep, cycle] = await Promise.all([

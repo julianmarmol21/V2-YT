@@ -35,7 +35,9 @@ export default async function handler(req, res) {
       body:    form,
     });
     const text = await r.text();
-    if (!r.ok) return res.status(500).json({ error: 'refresh failed: ' + text });
+    // Pass WHOOP's status through (400 = refresh token dead/already used)
+    // so the client knows to ask the user to reconnect.
+    if (!r.ok) return res.status(r.status >= 400 && r.status < 500 ? r.status : 502).json({ error: 'refresh failed: ' + text });
     try { return res.status(200).json(JSON.parse(text)); }
     catch { return res.status(500).json({ error: 'non-JSON response from WHOOP' }); }
   } catch (e) {
